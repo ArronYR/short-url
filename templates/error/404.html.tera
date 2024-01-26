@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8"/>
+    <title>404 - 南山拓谱</title>
+    <meta name="description" content="南山拓谱 - 短链服务"/>
+    <meta name="author" content="Arron"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+    <link rel="icon" type="image/png" href="/static/favicon.ico"/>
+</head>
+
+<body>
+<h1>404: Hey! There's nothing here.</h1>
+The page at {{ uri }} does not exist!
+</body>
+
+</html>
