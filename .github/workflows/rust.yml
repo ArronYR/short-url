@@ -17,3 +17,5 @@ jobs:
       run: echo ${HOME}/.cargo/bin >> $GITHUB_PATH
     - name: Run formatting
       run: cargo fmt --verbose --check
+    - name: Run tests
+      run: cargo test --verbose
