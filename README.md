@@ -1,5 +1,7 @@
 # 短链服务
 
+![Test](https://github.com/ArronYR/short-url/blob/main/.github/workflows/rust.yml/badge.svg)
+
 1. 支持生成短链接
 2. 支持短链接访问
 
