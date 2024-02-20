@@ -1,7 +1,5 @@
 # 短链服务
 
-[![Cargo fmt/test](https://github.com/ArronYR/short-url/actions/workflows/rust.yml/badge.svg)](https://github.com/ArronYR/short-url/actions/workflows/rust.yml)
-
 1. 支持生成短链接
 2. 支持短链接访问
 
@@ -37,13 +35,26 @@ TOKEN=0uLcr3xYI2ndKTZv
 ```shell
 # token 必须提供，用来控制非法调用，支持在环境变量中设置
 
-curl 'http://s.cn/gen' \
--H 'token: 53ROYinHId9qke' \
+> request
+curl -L 'http://127.0.0.1/api/generate' \
+-H 'Token: 53ROYinHId9qke' \
 -H 'Content-Type: application/json' \
 -d '{
-    "url": "https://www.baidu.com/s?ie=UTF-8&wd=test"
+    "urls": [
+        "https://dtsnew.console.aliyun.com/connect/cn-beijing",
+        "https://dtsnew.console.aliyun.com/connect/cn-hangzhou",
+        "https://dtsnew.console.aliyun.com/connect/cn-zhangjiakou",
+        "https://dtsnew.console.aliyun.com/connect/cn-shanghai"
+    ]
 }'
 
+> response
+{
+    "f3b5941fb8a51565526a5353242ab0d4": "https://127.0.0.1/mWejF",
+    "4bce96459bcb6c6dc8e3428bc6dbec98": "https://127.0.0.1/WFu7j",
+    "35798d470756c2f87a10fc884d9df82d": "https://127.0.0.1/d5GHE",
+    "b4962b8b32c1684aa7eadd0b3cdc93ab": "https://127.0.0.1/KsQsa"
+}
 ```
 
 2. 访问短链接

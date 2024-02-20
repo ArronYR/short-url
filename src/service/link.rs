@@ -70,7 +70,18 @@ impl LinkService {
         db: &DbConn,
         params: SearchParams,
     ) -> Result<(Vec<link::Model>, u64), DbErr> {
-        let paginator = link::Entity::find()
+        let mut selector = link::Entity::find();
+        if let Some(keyword) = params.keyword {
+            if !keyword.is_empty() {
+                let keyword = format!("%{}%", keyword.clone());
+                selector = selector.filter(
+                    link::Column::ShortId
+                        .like(keyword.clone())
+                        .or(link::Column::OriginalUrl.like(keyword.clone())),
+                );
+            }
+        }
+        let paginator = selector
             .order_by_desc(link::Column::Id)
             .paginate(db, params.size.unwrap_or(30));
         let pages = paginator.num_pages().await?;

@@ -18,8 +18,9 @@
   margin: -10px 0 10px 0;
 }
 
-span.completed {
-  text-decoration: line-through;
+.header-nav {
+  position: relative;
+  display: flex;
 }
 
 form.inline {
@@ -55,7 +56,7 @@ button.small {
   padding: 0 10px;
   font-size: 10px;
   line-height: 20px;
-  margin: 0 2.5px;
+  margin: 0 3px;
 }
 
 .link:hover {

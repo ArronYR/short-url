@@ -1,5 +1,26 @@
+# 使用带有 Node.js 的官方基础镜像
+FROM node:lts AS web-builder
+
+# 设置工作目录
+WORKDIR /usr/src/app
+
+# 复制项目文件
+COPY web/tsconfig*.json ./
+COPY web/package*.json ./
+COPY web/yarn.lock ./
+COPY web/.env*. ./
+COPY web/index.html ./
+COPY web/public ./public
+COPY web/src ./src
+
+# 安装依赖
+RUN npm install
+
+# 构建应用
+RUN npm run build
+
 # 使用 Rust 官方镜像作为构建环境
-FROM rust:slim-buster as builder
+FROM rust:slim-buster as rs-builder
 
 # 创建一个新的空工作目录
 WORKDIR /usr/src/app
@@ -26,12 +47,14 @@ RUN mkdir /app
 WORKDIR /app
 
 # 复制从 builder 阶段构建的可执行文件、静态文件
-COPY --from=builder /usr/src/app/target/release/short_url /app/
-COPY --from=builder /usr/src/app/static/ /app/static/
-COPY --from=builder /usr/src/app/templates/ /app/templates/
+COPY --from=rs-builder /usr/src/app/target/release/short_url /app/
+COPY --from=rs-builder /usr/src/app/static/ /app/static/
+COPY --from=rs-builder /usr/src/app/templates/ /app/templates/
+COPY --from=web-builder /usr/src/app/dist/ /app/web/
 
 ENV TZ=Asia/Shanghai
 ENV RUST_BACKTRACE=full
+EXPOSE 80
 
 # 设置容器启动时执行的命令
 CMD ["/app/short_url"]

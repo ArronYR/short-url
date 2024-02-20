@@ -1,16 +1,19 @@
-use actix_files::Files;
+use actix_cors::Cors;
 use actix_web::{
     get, http, middleware, post, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder,
 };
 use chrono::NaiveDateTime;
 use log::{debug, error, info, warn};
 use moka::future::Cache;
-use sea_orm::{ConnectionTrait, Database, DbConn};
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbConn};
+use serde_json::json;
 use short_url::models::link::{GenerateReq, Model as LinkModel, SearchParams};
 use short_url::service::link::LinkService;
-use short_url::utils::helpers::{generate_short_id, is_valid_url};
+use short_url::utils::helpers::{generate_short_id, is_valid_url, md5_hex};
 use short_url::{AppState, Config};
+use std::collections::HashMap;
 use std::env;
+use std::path::PathBuf;
 use std::time::Duration;
 use tera::Tera;
 
@@ -21,7 +24,7 @@ const TOKEN: &str = "53ROYinHId9qke";
 // 初始化配置信息
 fn init_config() -> Config {
     let port = env::var("PORT").unwrap_or_else(|_| "80".to_string());
-    let origin = env::var("ORIGIN").unwrap_or_else(|_| "https://s.nstp.cn".to_string());
+    let origin = env::var("ORIGIN").unwrap_or_else(|_| "https://127.0.0.1".to_string());
     // mysql://username:password@host:port/database_name
     let db_host = env::var("DB_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let db_port = env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
@@ -71,66 +74,6 @@ async fn not_found(request: HttpRequest, state: web::Data<AppState>) -> impl Res
     HttpResponse::Ok()
         .content_type("text/html")
         .body(build_error_page(request, state).await)
-}
-
-// 创建短链接的处理函数
-#[post("/gen")]
-async fn generate_short_link(
-    request: HttpRequest,
-    state: web::Data<AppState>,
-    params: web::Json<GenerateReq>,
-) -> impl Responder {
-    let db_conn = &state.db_conn;
-    let config = &state.config;
-
-    let token = match request.headers().get("Token") {
-        Some(header_value) => match header_value.to_str() {
-            Ok(value) => value.to_string(),
-            Err(_) => "".to_string(),
-        },
-        None => "".to_string(),
-    };
-
-    // 检查token是否正确
-    if token != config.token {
-        return HttpResponse::BadRequest().body("token不合法，请提供正确的参数");
-    }
-    // 检查URL是否合法
-    if !is_valid_url(params.url.as_str()) {
-        return HttpResponse::BadRequest().body("url不合法，请提供正确的参数");
-    }
-    // 如果源链接key已存在，直接返回
-    if let Some(link) = LinkService::find_by_original_url(&db_conn, params.url.clone()).await {
-        let short_link = format!("{origin}/{id}", origin = config.origin, id = link.short_id);
-        return HttpResponse::Ok().body(short_link);
-    };
-    let mut short_id = generate_short_id();
-    // 尝试3次，如果都已经存在，则抛出错误
-    for i in 0..3 {
-        if LinkService::check_short_id_used(&db_conn, short_id.clone()).await {
-            // 已被使用则重新生成
-            short_id = generate_short_id();
-        } else {
-            break;
-        }
-        if i == 2 {
-            return HttpResponse::InternalServerError().body("暂时无法生成短链接，请稍后重试");
-        }
-    }
-    let model = LinkModel {
-        id: 0,
-        short_id: short_id.clone(),
-        original_url: params.url.clone(),
-        create_time: NaiveDateTime::default(),
-    };
-    let result = LinkService::create(&db_conn, model).await;
-    match result {
-        Ok(_) => {
-            let short_link = format!("{origin}/{id}", origin = config.origin, id = short_id);
-            HttpResponse::Ok().body(short_link)
-        }
-        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
-    }
 }
 
 // 重定向短链接到原始链接的处理函数
@@ -187,11 +130,9 @@ async fn redirect(
     }
 }
 
-#[get("/")]
-async fn home(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, Error> {
+#[get("/api/search")]
+async fn search(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, Error> {
     let db_conn = &state.db_conn;
-    let config = &state.config;
-    let template = &state.templates;
 
     // get params
     let params = web::Query::<SearchParams>::from_query(req.query_string()).unwrap();
@@ -200,7 +141,7 @@ async fn home(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpRespon
 
     let params = SearchParams {
         id: None,
-        url: None,
+        keyword: params.keyword.clone(),
         page: Some(page),
         size: Some(size),
     };
@@ -208,18 +149,104 @@ async fn home(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpRespon
     let (links, pages) = LinkService::search(&db_conn, params)
         .await
         .expect("Cannot find links in page");
+    let json = json!({
+        "records": links,
+        "pages": pages,
+        "size": size
+    });
+    let resp = serde_json::to_string(&json).expect("Serialize error response failed");
+    Ok(HttpResponse::Ok()
+        .content_type("application/json;utf-8")
+        .body(resp))
+}
 
-    let mut ctx = tera::Context::new();
-    ctx.insert("origin", config.origin.as_str());
-    ctx.insert("page", &page);
-    ctx.insert("size", &size);
-    ctx.insert("links", &links);
-    ctx.insert("pages", &pages);
+#[get("/{filename:.*}")]
+async fn static_files(req: HttpRequest) -> impl Responder {
+    let path: PathBuf = req.match_info().query("filename").parse().unwrap();
+    let path = format!("./web/{}", path.to_string_lossy());
+    actix_files::NamedFile::open(path)
+}
 
-    let body = template
-        .render("index.html.tera", &ctx)
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Template error"))?;
-    Ok(HttpResponse::Ok().content_type("text/html").body(body))
+// 创建短链接的处理函数
+#[post("/api/generate")]
+async fn generate(
+    request: HttpRequest,
+    state: web::Data<AppState>,
+    params: web::Json<GenerateReq>,
+) -> impl Responder {
+    let db_conn = &state.db_conn;
+    let config = &state.config;
+
+    let token = match request.headers().get("Token") {
+        Some(header_value) => match header_value.to_str() {
+            Ok(value) => value.to_string(),
+            Err(_) => "".to_string(),
+        },
+        None => "".to_string(),
+    };
+
+    // 检查token是否正确
+    if token != config.token {
+        return HttpResponse::BadRequest().body("请提供正确的安全码");
+    }
+
+    let mut results = HashMap::new();
+    for url in &params.urls {
+        let url = url.as_str().trim();
+        // 检查URL是否合法
+        if !is_valid_url(url) {
+            return HttpResponse::BadRequest().body("请提供正确的链接");
+        }
+        let short_id = generate_to_db(db_conn.clone(), url).await;
+        let short_link = match short_id {
+            Some(short_id) => {
+                format!("{origin}/{id}", origin = config.origin, id = short_id)
+            }
+            None => "".to_string(),
+        };
+        results.insert(md5_hex(url), short_link);
+    }
+    let resp = serde_json::to_string(&results).expect("Serialize error response failed");
+    HttpResponse::Ok()
+        .content_type("application/json;utf-8")
+        .body(resp)
+}
+
+async fn generate_to_db(db_conn: DatabaseConnection, url: &str) -> Option<String> {
+    // 如果源链接key已存在，直接返回
+    if let Some(link) = LinkService::find_by_original_url(&db_conn, url.to_string()).await {
+        return Some(link.short_id);
+    };
+    let mut short_id = generate_short_id();
+    // 尝试3次，如果都已经存在，则抛出错误
+    for i in 0..3 {
+        if LinkService::check_short_id_used(&db_conn, short_id.clone()).await {
+            // 已被使用则重新生成
+            short_id = generate_short_id();
+        } else {
+            break;
+        }
+        if i == 2 {
+            return None;
+        }
+    }
+    let model = LinkModel {
+        id: 0,
+        short_id: short_id.clone(),
+        original_url: url.to_string(),
+        create_time: NaiveDateTime::default(),
+    };
+    let result = LinkService::create(&db_conn, model).await;
+    return match result {
+        Ok(_) => {
+            info!("generate url: {} success: {}", url, short_id);
+            Some(short_id)
+        }
+        Err(e) => {
+            error!("generate url: {} err: {:?}", url, e);
+            None
+        }
+    };
 }
 
 // 初始化数据库表结构
@@ -275,17 +302,25 @@ async fn start(config: Config) -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .service(Files::new("/static", "./static"))
             .wrap(middleware::Logger::default())
             .wrap(
                 middleware::DefaultHeaders::new()
-                    .add((http::header::CONTENT_TYPE, "text/plain; charset=utf-8")),
+                    .add((http::header::CONTENT_TYPE, "text/html; charset=utf-8")),
+            )
+            .wrap(
+                Cors::default()
+                    .allow_any_origin()
+                    .allow_any_method()
+                    .allow_any_header()
+                    .supports_credentials()
+                    .max_age(3600),
             )
             .app_data(web::Data::new(shared_state.clone()))
             .default_service(web::route().to(not_found))
-            .service(home)
-            .service(generate_short_link)
             .service(redirect)
+            .service(search)
+            .service(generate)
+            .service(actix_files::Files::new("/", "./web").index_file("index.html"))
     })
     .bind(format!("0.0.0.0:{port}", port = config.port))?
     .run()
@@ -328,7 +363,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(shared_state))
-                .service(home),
+                .service(redirect),
         )
         .await;
         let req = test::TestRequest::get().uri("/").to_request();

@@ -21,13 +21,13 @@ impl ActiveModelBehavior for ActiveModel {}
 // ======================== http request params ========================
 #[derive(Debug, Deserialize)]
 pub struct GenerateReq {
-    pub url: String,
+    pub urls: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SearchParams {
     pub id: Option<String>,
-    pub url: Option<String>,
+    pub keyword: Option<String>,
     pub page: Option<u64>,
     pub size: Option<u64>,
 }
