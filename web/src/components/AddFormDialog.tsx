@@ -96,7 +96,7 @@ export default function AddFormDialog(props: Props) {
                 <DialogTitle>添加链接</DialogTitle>
                 <DialogContent>
                     <DialogContentText>
-                        请输入原链接，点击确定后将生产对应的短链接。
+                        输入链接后点击确定将生成对应短链接
                     </DialogContentText>
                     <TextField
                         name={'urls'}
