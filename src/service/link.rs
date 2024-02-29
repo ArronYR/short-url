@@ -1,9 +1,11 @@
 use crate::models::link;
-use crate::models::link::SearchParams;
+use crate::models::link::{LinkStatusEnum, SearchParams};
 use log::error;
+use num_traits::ToPrimitive;
+use sea_orm::prelude::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DbConn, DbErr, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, Set,
+    QueryOrder, Set, UpdateResult,
 };
 
 pub struct LinkService;
@@ -59,6 +61,8 @@ impl LinkService {
         link::ActiveModel {
             short_id: Set(data.short_id.to_owned()),
             original_url: Set(data.original_url.to_owned()),
+            expired_ts: Set(data.expired_ts.to_owned()),
+            status: Set(data.status.to_owned()),
             ..Default::default()
         }
         .save(db)
@@ -91,5 +95,31 @@ impl LinkService {
             .fetch_page(params.page.unwrap_or(1) - 1)
             .await
             .map(|p| (p, pages))
+    }
+
+    pub async fn update_status(
+        db: &DbConn,
+        targets: &Vec<String>,
+        status: &LinkStatusEnum,
+    ) -> Result<UpdateResult, DbErr> {
+        let result = link::Entity::update_many()
+            .col_expr(link::Column::Status, Expr::value(status.to_i16()))
+            .filter(link::Column::ShortId.is_in(targets.to_owned()))
+            .exec(db)
+            .await?;
+        Ok(result)
+    }
+
+    pub async fn update_expired(
+        db: &DbConn,
+        targets: &Vec<String>,
+        expired_ts: &i64,
+    ) -> Result<UpdateResult, DbErr> {
+        let result = link::Entity::update_many()
+            .col_expr(link::Column::ExpiredTs, Expr::value(expired_ts.to_owned()))
+            .filter(link::Column::ShortId.is_in(targets.to_owned()))
+            .exec(db)
+            .await?;
+        Ok(result)
     }
 }

@@ -8,7 +8,7 @@ import LinkTable from "./components/LinkTable";
 
 function Copyright() {
     return (
-        <Typography sx={{mt: 4}} variant="body2" color="text.secondary" align="center">
+        <Typography sx={{mt: 4}} variant={"body2"} color={"text.secondary"} align={"center"}>
             {'Copyright © '}
             <Link color="inherit" href="https://tuopukeji.cn/" target={"_blank"}>
                 北京南山拓谱科技有限公司
@@ -22,7 +22,7 @@ export default function App() {
     return (
         <Container>
             <Box sx={{my: 4}}>
-                <Typography variant="h4" component="h1" sx={{mb: 2}}>短链接</Typography>
+                <Typography variant={"h4"} component={"h1"} sx={{mb: 2}}>短链接</Typography>
                 <ProTip/>
                 <LinkTable/>
                 <Copyright/>

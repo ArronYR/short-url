@@ -1,19 +1,20 @@
 # 使用带有 Node.js 的官方基础镜像
-FROM node:lts AS web-builder
+FROM node:18.18.2-buster-slim AS web-builder
 
 # 设置工作目录
 WORKDIR /usr/src/app
 
 # 复制项目文件
 COPY web/tsconfig*.json ./
-COPY web/package*.json ./
-COPY web/yarn.lock ./
-COPY web/.env*. ./
+COPY web/package.json ./
+COPY web/.env* ./
 COPY web/index.html ./
 COPY web/public ./public
 COPY web/src ./src
 
 # 安装依赖
+RUN npm config set strict-ssl false
+RUN npm config set registry https://registry.npm.taobao.org
 RUN npm install
 
 # 构建应用

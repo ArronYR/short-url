@@ -6,24 +6,34 @@ import {
     DialogContent,
     DialogContentText,
     DialogTitle,
+    List,
+    ListItem,
+    ListItemText,
     TextField
-} from "@mui/material";
-import {split, trim} from 'lodash';
+} from '@mui/material';
 import SnackAlert from "./SnackAlert";
+import {baseUrl} from "../api/api";
 import useService from "../service/service";
+import {trim} from "lodash";
 import {useAlert} from "../hooks";
+import {DateTimeField, LocalizationProvider} from "@mui/x-date-pickers";
+import {AdapterDayjs} from "@mui/x-date-pickers/AdapterDayjs";
+import {DT_FORMAT} from "../config/constants";
+import moment from "moment";
 
 type Props = {
     visible: boolean;
+    targets: string[];
+    defaultValue?: number;
     onOk?: () => void;
     onCancel?: () => void;
 }
 
-export default function AddFormDialog(props: Props) {
-    const {visible, onOk, onCancel} = props;
+export default function ChangeExpiredDialog(props: Props) {
+    const {visible, targets, defaultValue, onOk, onCancel} = props;
 
     const {alertVisible, alertMessage, alertColor, showAlert, closeAlert} = useAlert();
-    const {generate, generating} = useService();
+    const {changeExpired, expiredChanging} = useService();
 
     const handleDialogClose = (_event: {}, reason: 'backdropClick' | 'escapeKeyDown') => {
         if (reason === 'backdropClick') {
@@ -39,26 +49,33 @@ export default function AddFormDialog(props: Props) {
     }
 
     const handleSubmit = (data: Record<string, string>) => {
-        const {urls, token} = data;
-        if (!trim(urls).length) {
-            showAlert('请填写正确的链接', "error");
-            return;
+        const {token, datetime} = data;
+        if (!targets?.length) {
+            showAlert('请点击要启用的短链接', 'error');
+            return
         }
-        const strings = split(urls, '\n')
-            .map(s => trim(s))
-            .filter(s => s);
+        let expired = 0;
+        if (datetime) {
+            if (!moment(datetime).isValid()) {
+                showAlert('请正确设置有效期的格式', 'error');
+                return;
+            }
+            expired = moment(datetime).valueOf();
+        }
         if (!trim(token).length) {
             showAlert('请填写正确的安全码', "error");
             return;
         }
-        generate({
+        changeExpired({
             token,
-            urls: strings
+            targets,
+            expired,
         }).then(() => {
-            showAlert('添加成功', 'success');
+            showAlert('操作成功', 'success');
             if (onOk) {
-                onOk()
+                onOk();
             }
+            handleClose();
         }).catch((err) => {
             showAlert(err.toString(), 'error');
         })
@@ -80,30 +97,41 @@ export default function AddFormDialog(props: Props) {
                 }}
                 onClose={handleDialogClose}
             >
-                <DialogTitle>添加链接</DialogTitle>
+                <DialogTitle>设置有效期</DialogTitle>
                 <DialogContent>
                     <DialogContentText>
-                        输入链接后点击确定将生成对应短链接
+                        您将对以下短链接设置有效期，请慎重操作。
                     </DialogContentText>
-                    <TextField
-                        name={'urls'}
-                        type={'urls'}
-                        label={'链接'}
-                        margin={'dense'}
-                        variant={'standard'}
-                        autoFocus={true}
-                        required={true}
-                        fullWidth={true}
-                        multiline={true}
-                        rows={4}
-                        placeholder={'请输入链接，多个链接按行分隔'}
-                    />
+                    <List disablePadding={true} sx={{mb: 2}}>
+                        {(targets || []).map((value) => {
+                            return (
+                                <ListItem key={value} disablePadding={true}>
+                                    <ListItemText
+                                        primary={`${baseUrl}/${value}`}
+                                    />
+                                </ListItem>
+                            )
+                        })}
+                    </List>
+                    <LocalizationProvider dateAdapter={AdapterDayjs}>
+                        <DateTimeField
+                            name={'datetime'}
+                            label={'有效期'}
+                            ampm={false}
+                            format={DT_FORMAT.DATETIME}
+                            clearable={true}
+                            size={'small'}
+                            fullWidth={true}
+                            value={defaultValue ? moment(defaultValue) : null}
+                        />
+                    </LocalizationProvider>
                     <TextField
                         name={'token'}
                         type={'text'}
                         label={'安全码'}
                         margin={'dense'}
                         variant={'standard'}
+                        autoFocus={true}
                         required={true}
                         placeholder={'请输入安全码'}
                     />
@@ -112,7 +140,7 @@ export default function AddFormDialog(props: Props) {
                     <Button onClick={handleClose}>取消</Button>
                     <Button
                         type={'submit'}
-                        disabled={generating}
+                        disabled={expiredChanging}
                     >确定</Button>
                 </DialogActions>
             </Dialog>

@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="utf-8"/>
-    <title>404 - 南山拓谱</title>
+    <title>短链接已被禁用 - 南山拓谱</title>
     <meta name="description" content="南山拓谱 - 短链服务"/>
     <meta name="author" content="Arron"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -12,8 +12,8 @@
 </head>
 
 <body>
-<h1>404:</h1>
-The page at {{ uri }} does not exist!
+<h1>Forbidden:</h1>
+The page at {{ uri }} has been forbidden!
 </body>
 
 </html>

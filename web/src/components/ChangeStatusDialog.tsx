@@ -6,24 +6,38 @@ import {
     DialogContent,
     DialogContentText,
     DialogTitle,
+    List,
+    ListItem,
+    ListItemText,
     TextField
-} from "@mui/material";
-import {split, trim} from 'lodash';
+} from '@mui/material';
 import SnackAlert from "./SnackAlert";
+import {LINK_STATUS, LINK_STATUS_BUTTON_TEXT} from "../config/constants";
+import {baseUrl} from "../api/api";
+import {useMemo} from "react";
 import useService from "../service/service";
+import {isNil, trim} from "lodash";
 import {useAlert} from "../hooks";
 
 type Props = {
     visible: boolean;
+    targets: string[];
+    status?: number;
     onOk?: () => void;
     onCancel?: () => void;
 }
 
-export default function AddFormDialog(props: Props) {
-    const {visible, onOk, onCancel} = props;
+export default function ChangeStatusDialog(props: Props) {
+    const {visible, targets, status, onOk, onCancel} = props;
 
     const {alertVisible, alertMessage, alertColor, showAlert, closeAlert} = useAlert();
-    const {generate, generating} = useService();
+    const {changeStatus, statusChanging} = useService();
+
+    const statusText = useMemo(() => {
+        return status === LINK_STATUS.NORMAL
+            ? LINK_STATUS_BUTTON_TEXT[LINK_STATUS.NORMAL]
+            : LINK_STATUS_BUTTON_TEXT[LINK_STATUS.DISABLED]
+    }, [status])
 
     const handleDialogClose = (_event: {}, reason: 'backdropClick' | 'escapeKeyDown') => {
         if (reason === 'backdropClick') {
@@ -39,26 +53,29 @@ export default function AddFormDialog(props: Props) {
     }
 
     const handleSubmit = (data: Record<string, string>) => {
-        const {urls, token} = data;
-        if (!trim(urls).length) {
-            showAlert('请填写正确的链接', "error");
+        const {token} = data;
+        if (!targets?.length) {
+            showAlert('请点击要启用的短链接', 'error');
+            return
+        }
+        if (isNil(status)) {
+            showAlert('当前数据有误，请刷新或联系管理员', 'error');
             return;
         }
-        const strings = split(urls, '\n')
-            .map(s => trim(s))
-            .filter(s => s);
         if (!trim(token).length) {
             showAlert('请填写正确的安全码', "error");
             return;
         }
-        generate({
+        changeStatus({
             token,
-            urls: strings
+            targets,
+            status: status,
         }).then(() => {
-            showAlert('添加成功', 'success');
+            showAlert('操作成功', 'success');
             if (onOk) {
-                onOk()
+                onOk();
             }
+            handleClose();
         }).catch((err) => {
             showAlert(err.toString(), 'error');
         })
@@ -80,30 +97,29 @@ export default function AddFormDialog(props: Props) {
                 }}
                 onClose={handleDialogClose}
             >
-                <DialogTitle>添加链接</DialogTitle>
+                <DialogTitle>{statusText}短链接</DialogTitle>
                 <DialogContent>
                     <DialogContentText>
-                        输入链接后点击确定将生成对应短链接
+                        您将对以下短链接进行 <strong>{statusText}</strong> 操作，请慎重。
                     </DialogContentText>
-                    <TextField
-                        name={'urls'}
-                        type={'urls'}
-                        label={'链接'}
-                        margin={'dense'}
-                        variant={'standard'}
-                        autoFocus={true}
-                        required={true}
-                        fullWidth={true}
-                        multiline={true}
-                        rows={4}
-                        placeholder={'请输入链接，多个链接按行分隔'}
-                    />
+                    <List disablePadding={true}>
+                        {(targets || []).map((value) => {
+                            return (
+                                <ListItem key={value} disablePadding={true}>
+                                    <ListItemText
+                                        primary={`${baseUrl}/${value}`}
+                                    />
+                                </ListItem>
+                            )
+                        })}
+                    </List>
                     <TextField
                         name={'token'}
                         type={'text'}
                         label={'安全码'}
                         margin={'dense'}
                         variant={'standard'}
+                        autoFocus={true}
                         required={true}
                         placeholder={'请输入安全码'}
                     />
@@ -112,7 +128,7 @@ export default function AddFormDialog(props: Props) {
                     <Button onClick={handleClose}>取消</Button>
                     <Button
                         type={'submit'}
-                        disabled={generating}
+                        disabled={statusChanging}
                     >确定</Button>
                 </DialogActions>
             </Dialog>

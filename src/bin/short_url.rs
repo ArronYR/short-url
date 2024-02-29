@@ -2,14 +2,21 @@ use actix_cors::Cors;
 use actix_web::{
     get, http, middleware, post, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder,
 };
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, Utc};
 use log::{debug, error, info, warn};
 use moka::future::Cache;
+use num_traits::ToPrimitive;
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbConn};
 use serde_json::json;
-use short_url::models::link::{GenerateReq, Model as LinkModel, SearchParams};
+use short_url::middleware::validator::ApiValidateMiddleware;
+use short_url::models::link::{
+    ChangeExpiredReq, ChangeStatusReq, GenerateReq, LinkStatusEnum, Model as LinkModel,
+    SearchParams,
+};
 use short_url::service::link::LinkService;
-use short_url::utils::helpers::{generate_short_id, is_valid_url, md5_hex};
+use short_url::utils::helpers::{
+    generate_short_id, is_reasonable_timestamp, is_valid_url, md5_hex, validate_header_token,
+};
 use short_url::{AppState, Config};
 use std::collections::HashMap;
 use std::env;
@@ -20,6 +27,8 @@ use tera::Tera;
 const SCHEMA: &str = include_str!("../db.sql");
 const DB_OPTION: &str = "characterEncoding=utf-8&characterSetResults=utf-8&autoReconnect=true&failOverReadOnly=false&serverTimezone=GMT%2B8";
 const TOKEN: &str = "53ROYinHId9qke";
+const API_SECRET: &str = "1FIsiEpxQo5l7H";
+const HEADER_TOKEN_KEY: &str = "Token";
 
 // 初始化配置信息
 fn init_config() -> Config {
@@ -41,6 +50,7 @@ fn init_config() -> Config {
         Ok(value) => value.parse::<u64>().unwrap_or_else(|_| 60),
         Err(_) => 60,
     };
+    let api_secret = env::var("API_SECRET").unwrap_or_else(|_| API_SECRET.to_string());
 
     Config {
         port,
@@ -54,17 +64,22 @@ fn init_config() -> Config {
         token,
         cache_max_cap,
         cache_live_time,
+        api_secret,
     }
 }
 
-async fn build_error_page(request: HttpRequest, state: web::Data<AppState>) -> String {
+async fn build_error_page(
+    request: HttpRequest,
+    state: web::Data<AppState>,
+    template_name: &str,
+) -> String {
     let template = &state.templates;
 
     let mut ctx = tera::Context::new();
     ctx.insert("uri", request.uri().path());
 
     template
-        .render("error/404.html.tera", &ctx)
+        .render(template_name, &ctx)
         .map_err(|_| actix_web::error::ErrorInternalServerError("Template error"))
         .unwrap_or_else(|_| "error".to_string())
 }
@@ -73,7 +88,7 @@ async fn build_error_page(request: HttpRequest, state: web::Data<AppState>) -> S
 async fn not_found(request: HttpRequest, state: web::Data<AppState>) -> impl Responder {
     HttpResponse::Ok()
         .content_type("text/html")
-        .body(build_error_page(request, state).await)
+        .body(build_error_page(request, state, "error/404.html.tera").await)
 }
 
 // 重定向短链接到原始链接的处理函数
@@ -85,9 +100,10 @@ async fn redirect(
 ) -> impl Responder {
     let db_conn = &state.db_conn;
     let cache = &state.cache;
+    let short_id = short_id.as_str();
 
     // 如果缓存存在
-    if let Some(cached) = cache.get(short_id.as_str()).await {
+    if let Some(cached) = cache.get(short_id).await {
         if let Some(url) = cached {
             info!(
                 "[redirect] cached short_id: {} original_url: {}",
@@ -100,22 +116,36 @@ async fn redirect(
         warn!("[redirect] cached short_id: {} url invalid", short_id);
         return HttpResponse::Ok()
             .content_type("text/html")
-            .body(build_error_page(request, state).await);
+            .body(build_error_page(request, state, "error/404.html.tera").await);
     }
     let result = LinkService::find_by_short_id(&db_conn, short_id.to_string()).await;
     if let Some(row) = result {
         if row.original_url.is_empty() {
             error!("[redirect] short_id: {} original_url is empty", short_id);
-            cache.insert(short_id.clone(), None).await;
+            cache.insert(short_id.to_string(), None).await;
             HttpResponse::NotFound().finish()
         } else {
             info!(
-                "[redirect] short_id: {} original_url: {}",
-                short_id, row.original_url
+                "[redirect] short_id: {} original_url: {} status: {}",
+                short_id, row.original_url, row.status
             );
+            // 已被禁用
+            if row.status == LinkStatusEnum::Disabled.to_i16().unwrap() {
+                cache.insert(short_id.to_string(), None).await;
+                return HttpResponse::Ok()
+                    .content_type("text/html")
+                    .body(build_error_page(request, state, "disabled.html.tera").await);
+            }
+            // 已过期
+            if row.expired_ts > 0 && row.expired_ts < Utc::now().timestamp_millis() {
+                cache.insert(short_id.to_string(), None).await;
+                return HttpResponse::Ok()
+                    .content_type("text/html")
+                    .body(build_error_page(request, state, "expired.html.tera").await);
+            }
             let original_url: String = row.original_url;
             cache
-                .insert(short_id.clone(), Some(original_url.clone()))
+                .insert(short_id.to_string(), Some(original_url.clone()))
                 .await;
             HttpResponse::TemporaryRedirect()
                 .append_header(("Location", original_url))
@@ -123,10 +153,10 @@ async fn redirect(
         }
     } else {
         error!("[redirect] short_id: {} is not found", short_id);
-        cache.insert(short_id.clone(), None).await;
+        cache.insert(short_id.to_string(), None).await;
         HttpResponse::Ok()
             .content_type("text/html")
-            .body(build_error_page(request, state).await)
+            .body(build_error_page(request, state, "error/404.html.tera").await)
     }
 }
 
@@ -140,7 +170,6 @@ async fn search(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResp
     let size = params.size.unwrap_or(30);
 
     let params = SearchParams {
-        id: None,
         keyword: params.keyword.clone(),
         page: Some(page),
         size: Some(size),
@@ -177,19 +206,14 @@ async fn generate(
     let db_conn = &state.db_conn;
     let config = &state.config;
 
-    let token = match request.headers().get("Token") {
-        Some(header_value) => match header_value.to_str() {
-            Ok(value) => value.to_string(),
-            Err(_) => "".to_string(),
-        },
-        None => "".to_string(),
-    };
-
-    // 检查token是否正确
-    if token != config.token {
+    if !validate_header_token(
+        request.headers().get(HEADER_TOKEN_KEY),
+        config.token.as_str(),
+    ) {
         return HttpResponse::BadRequest().body("请提供正确的安全码");
     }
 
+    let expired_ts = params.expired_ts.unwrap_or(0);
     let mut results = HashMap::new();
     for url in &params.urls {
         let url = url.as_str().trim();
@@ -197,7 +221,7 @@ async fn generate(
         if !is_valid_url(url) {
             return HttpResponse::BadRequest().body("请提供正确的链接");
         }
-        let short_id = generate_to_db(db_conn.clone(), url).await;
+        let short_id = generate_to_db(db_conn.clone(), url, expired_ts).await;
         let short_link = match short_id {
             Some(short_id) => {
                 format!("{origin}/{id}", origin = config.origin, id = short_id)
@@ -212,7 +236,7 @@ async fn generate(
         .body(resp)
 }
 
-async fn generate_to_db(db_conn: DatabaseConnection, url: &str) -> Option<String> {
+async fn generate_to_db(db_conn: DatabaseConnection, url: &str, expired_ts: i64) -> Option<String> {
     // 如果源链接key已存在，直接返回
     if let Some(link) = LinkService::find_by_original_url(&db_conn, url.to_string()).await {
         return Some(link.short_id);
@@ -234,6 +258,8 @@ async fn generate_to_db(db_conn: DatabaseConnection, url: &str) -> Option<String
         id: 0,
         short_id: short_id.clone(),
         original_url: url.to_string(),
+        expired_ts,
+        status: 0,
         create_time: NaiveDateTime::default(),
     };
     let result = LinkService::create(&db_conn, model).await;
@@ -247,6 +273,70 @@ async fn generate_to_db(db_conn: DatabaseConnection, url: &str) -> Option<String
             None
         }
     };
+}
+
+#[post("/api/status")]
+async fn change_status(
+    request: HttpRequest,
+    state: web::Data<AppState>,
+    params: web::Json<ChangeStatusReq>,
+) -> impl Responder {
+    let db_conn = &state.db_conn;
+    let config = &state.config;
+    let cache = &state.cache;
+
+    if !validate_header_token(
+        request.headers().get(HEADER_TOKEN_KEY),
+        config.token.as_str(),
+    ) {
+        return HttpResponse::BadRequest().body("请提供正确的安全码");
+    }
+
+    let result = LinkService::update_status(&db_conn, &params.targets, &params.status).await;
+    debug!("update status result: {:?}", result);
+    match result {
+        Ok(_) => {
+            remove_cache(cache, &params.targets).await;
+            HttpResponse::Ok()
+                .content_type("application/json;utf-8")
+                .body("{}")
+        }
+        Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
+    }
+}
+
+#[post("/api/expired")]
+async fn change_expired(
+    request: HttpRequest,
+    state: web::Data<AppState>,
+    params: web::Json<ChangeExpiredReq>,
+) -> impl Responder {
+    let db_conn = &state.db_conn;
+    let config = &state.config;
+    let cache = &state.cache;
+
+    if !validate_header_token(
+        request.headers().get(HEADER_TOKEN_KEY),
+        config.token.as_str(),
+    ) {
+        return HttpResponse::BadRequest().body("请提供正确的安全码");
+    }
+
+    if !is_reasonable_timestamp(params.expired) {
+        return HttpResponse::BadRequest().body("请提供不小于当前日期的过期时间");
+    }
+
+    let result = LinkService::update_expired(&db_conn, &params.targets, &params.expired).await;
+    debug!("update expired result: {:?}", result);
+    match result {
+        Ok(_) => {
+            remove_cache(cache, &params.targets).await;
+            HttpResponse::Ok()
+                .content_type("application/json;utf-8")
+                .body("{}")
+        }
+        Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
+    }
 }
 
 // 初始化数据库表结构
@@ -282,13 +372,18 @@ async fn init_cache(config: Config) -> Cache<String, Option<String>> {
     cache
 }
 
+async fn remove_cache(cache: &Cache<String, Option<String>>, keys: &Vec<String>) {
+    for key in keys {
+        cache.remove(key).await;
+    }
+}
+
 async fn start(config: Config) -> std::io::Result<()> {
     let db_conn = init_db_conn(config.clone()).await;
     // 初始化数据库表结构
     init_db(db_conn.clone()).await;
-
+    // 初始化缓存配置
     let cache = init_cache(config.clone()).await;
-
     // tera templates
     let templates = Tera::new("./templates/**/*").unwrap();
 
@@ -307,6 +402,9 @@ async fn start(config: Config) -> std::io::Result<()> {
                 middleware::DefaultHeaders::new()
                     .add((http::header::CONTENT_TYPE, "text/html; charset=utf-8")),
             )
+            .wrap(ApiValidateMiddleware {
+                secret: config.api_secret.clone(),
+            })
             .wrap(
                 Cors::default()
                     .allow_any_origin()
@@ -320,6 +418,8 @@ async fn start(config: Config) -> std::io::Result<()> {
             .service(redirect)
             .service(search)
             .service(generate)
+            .service(change_status)
+            .service(change_expired)
             .service(actix_files::Files::new("/", "./web").index_file("index.html"))
     })
     .bind(format!("0.0.0.0:{port}", port = config.port))?
@@ -346,7 +446,8 @@ mod tests {
     use super::*;
     use actix_web::test;
 
-    // #[actix_web::test]
+    #[actix_web::test]
+    #[ignore]
     async fn test_index_ok() {
         let config = init_config();
         let db_conn = init_db_conn(config.clone()).await;
@@ -370,5 +471,11 @@ mod tests {
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), http::StatusCode::OK);
+    }
+
+    #[actix_web::test]
+    async fn test_ts() {
+        let ts = Utc::now().timestamp_millis();
+        println!("now timestamp: {}", ts);
     }
 }

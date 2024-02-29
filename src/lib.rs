@@ -1,3 +1,4 @@
+pub mod middleware;
 pub mod models;
 pub mod service;
 pub mod utils;
@@ -19,6 +20,7 @@ pub struct Config {
     pub token: String,
     pub cache_max_cap: u64,
     pub cache_live_time: u64,
+    pub api_secret: String,
 }
 
 #[derive(Debug, Clone)]
