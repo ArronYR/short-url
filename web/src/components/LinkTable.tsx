@@ -60,7 +60,7 @@ export default function LinkTable() {
         {
             field: 'short_id',
             headerName: '短链接',
-            width: 240,
+            width: 180,
             sortable: false,
             renderCell: (props) => {
                 const url = `${baseUrl}/${props.row.short_id}`
@@ -71,10 +71,8 @@ export default function LinkTable() {
                         align={'center'}
                         display={'flex'}
                         justifyContent={"space-between"}
-                        width={'90%'}
                     >
-                        {url}
-                        <Link color={'inherit'} href={url} target={'_blank'}>访问</Link>
+                        <Link color={'inherit'} underline={'none'} href={url} target={'_blank'}>{url}</Link>
                     </Typography>
                 )
             }
@@ -82,7 +80,7 @@ export default function LinkTable() {
         {
             field: 'original_url',
             headerName: '原链接',
-            minWidth: 400,
+            minWidth: 360,
             cellClassName: 'cell-cls-name',
             sortable: false,
             renderCell: (props) => {
@@ -94,16 +92,22 @@ export default function LinkTable() {
                         align={'center'}
                         display={"flex"}
                         justifyContent={"space-between"}
-                        width={'90%'}
+                        width={'100%'}
                     >
                         <Tooltip title={props.row.original_url} arrow={true} placement={"top"}>
                             <Typography
                                 variant={'body2'}
                                 noWrap={true}
                                 textOverflow={"ellipsis"}
-                            >{props.row.original_url}</Typography>
+                            >
+                                <Link
+                                    color={"inherit"}
+                                    href={props.row.original_url}
+                                    target={"_blank"}
+                                    underline={'none'}
+                                >{props.row.original_url}</Link>
+                            </Typography>
                         </Tooltip>
-                        <Link sx={{ml: 4}} color={"inherit"} href={props.row.original_url} target={"_blank"}>访问</Link>
                     </Typography>
                 )
             }
@@ -131,6 +135,14 @@ export default function LinkTable() {
             cellClassName: 'cell-cls-name',
             sortable: false,
             valueGetter: ({value}) => value ? moment(value).format(DT_FORMAT.DATETIME) : '永久',
+        },
+        {
+            field: 'pv',
+            headerName: 'PV',
+            minWidth: 40,
+            cellClassName: 'cell-cls-name',
+            sortable: false,
+            valueGetter: ({value}) => value ?? 0,
         },
         {
             field: 'actions',

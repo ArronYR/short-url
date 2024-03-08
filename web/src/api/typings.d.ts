@@ -10,6 +10,7 @@ declare namespace API {
         original_url?: string;
         status?: number;
         expired_ts?: number;
+        pv?: number;
     }
 }
 

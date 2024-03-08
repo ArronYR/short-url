@@ -54,3 +54,14 @@ pub enum LinkStatusEnum {
     Normal = 0,
     Disabled = 1,
 }
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SearchRecordItem {
+    pub id: u64,
+    pub short_id: String,
+    pub original_url: String,
+    pub expired_ts: i64,
+    pub status: i16,
+    pub create_time: NaiveDateTime,
+    pub pv: i64,
+}

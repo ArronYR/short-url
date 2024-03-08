@@ -21,6 +21,7 @@ pub struct Config {
     pub cache_max_cap: u64,
     pub cache_live_time: u64,
     pub api_secret: String,
+    pub access_log: bool,
 }
 
 #[derive(Debug, Clone)]

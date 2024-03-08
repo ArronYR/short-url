@@ -11,3 +11,14 @@ CREATE TABLE IF NOT EXISTS `link`
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_bin COMMENT ='链接记录';
+
+CREATE TABLE IF NOT EXISTS `access_log`
+(
+    `id`          bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `short_id`    varchar(50)         NOT NULL COMMENT '短链ID',
+    `req_headers` longtext COMMENT '请求头',
+    `create_time` datetime            NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_short_id` (`short_id`) USING BTREE
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='访问日志';

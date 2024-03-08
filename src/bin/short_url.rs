@@ -1,4 +1,5 @@
 use actix_cors::Cors;
+use actix_web::rt::spawn;
 use actix_web::{
     get, http, middleware, post, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder,
 };
@@ -9,10 +10,15 @@ use num_traits::ToPrimitive;
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbConn};
 use serde_json::json;
 use short_url::middleware::validator::ApiValidateMiddleware;
-use short_url::models::link::{
-    ChangeExpiredReq, ChangeStatusReq, GenerateReq, LinkStatusEnum, Model as LinkModel,
-    SearchParams,
+use short_url::models::link::SearchRecordItem;
+use short_url::models::{
+    access_log::Model as AccessLogModel,
+    link::{
+        ChangeExpiredReq, ChangeStatusReq, GenerateReq, LinkStatusEnum, Model as LinkModel,
+        SearchParams,
+    },
 };
+use short_url::service::access_log::AccessLogService;
 use short_url::service::link::LinkService;
 use short_url::utils::helpers::{
     generate_short_id, is_reasonable_timestamp, is_valid_url, md5_hex, validate_header_token,
@@ -51,6 +57,10 @@ fn init_config() -> Config {
         Err(_) => 60,
     };
     let api_secret = env::var("API_SECRET").unwrap_or_else(|_| API_SECRET.to_string());
+    let access_log = match env::var("ACCESS_LOG") {
+        Ok(value) => value.parse::<bool>().unwrap_or(true),
+        Err(_) => true,
+    };
 
     Config {
         port,
@@ -65,6 +75,7 @@ fn init_config() -> Config {
         cache_max_cap,
         cache_live_time,
         api_secret,
+        access_log,
     }
 }
 
@@ -100,7 +111,32 @@ async fn redirect(
 ) -> impl Responder {
     let db_conn = &state.db_conn;
     let cache = &state.cache;
+    let config = &state.config;
+
     let short_id = short_id.as_str();
+    // 写入日志
+    if config.access_log {
+        let short_id = short_id.to_string().clone();
+        let db_conn = db_conn.clone();
+        let headers = request.headers().clone();
+
+        spawn(async move {
+            let req_headers = headers
+                .iter()
+                .map(|(k, v)| format!("{}: {:?}", k, v))
+                .collect::<Vec<String>>()
+                .join("\n");
+            let model = AccessLogModel {
+                id: 0,
+                short_id: short_id.clone(),
+                req_headers,
+                create_time: NaiveDateTime::default(),
+            };
+            if let Err(e) = AccessLogService::add(&db_conn, model).await {
+                error!("add id: {} access log error: {:?}", short_id, e);
+            };
+        });
+    }
 
     // 如果缓存存在
     if let Some(cached) = cache.get(short_id).await {
@@ -163,6 +199,7 @@ async fn redirect(
 #[get("/api/search")]
 async fn search(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, Error> {
     let db_conn = &state.db_conn;
+    let config = &state.config;
 
     // get params
     let params = web::Query::<SearchParams>::from_query(req.query_string()).unwrap();
@@ -178,8 +215,29 @@ async fn search(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResp
     let (links, pages) = LinkService::search(&db_conn, params)
         .await
         .expect("Cannot find links in page");
+
+    // 查找PV数据（如果开启了ACCESS_LOG）
+    let mut pv_map: HashMap<String, i64> = HashMap::new();
+    if config.access_log {
+        let ids: Vec<String> = links.iter().map(|r| r.short_id.clone()).collect();
+        pv_map = AccessLogService::batch_query_pv(&db_conn, ids).await;
+    }
+
+    let mut records: Vec<SearchRecordItem> = Vec::new();
+    for link in links {
+        records.push(SearchRecordItem {
+            id: link.id,
+            short_id: link.short_id.clone(),
+            original_url: link.original_url,
+            expired_ts: link.expired_ts,
+            status: link.status,
+            create_time: link.create_time,
+            pv: *pv_map.get(link.short_id.as_str()).unwrap_or(&0i64),
+        })
+    }
+
     let json = json!({
-        "records": links,
+        "records": records,
         "pages": pages,
         "size": size
     });
