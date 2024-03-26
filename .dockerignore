@@ -1,0 +1,12 @@
+web/node_modules
+web/dist
+web/.idea
+
+target
+.vscode
+Dockerfile
+.github
+.git
+.gitignore
+README.md
+flamegraph.svg

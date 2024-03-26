@@ -10,9 +10,6 @@ function Copyright() {
     return (
         <Typography sx={{mt: 4}} variant={"body2"} color={"text.secondary"} align={"center"}>
             {'Copyright © '}
-            <Link color="inherit" href="https://tuopukeji.cn/" target={"_blank"}>
-                北京南山拓谱科技有限公司
-            </Link>{' '}
             {new Date().getFullYear()}
         </Typography>
     );
