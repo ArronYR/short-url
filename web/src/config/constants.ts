@@ -6,7 +6,7 @@ export const LINK_STATUS = {
 
 export const LINK_STATUS_TEXT = {
     [LINK_STATUS.UNKNOWN]: '未知',
-    [LINK_STATUS.NORMAL]: '正常',
+    [LINK_STATUS.NORMAL]: '启用',
     [LINK_STATUS.DISABLED]: '已禁用',
 }
 
