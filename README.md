@@ -11,4 +11,4 @@ npm run dev
 
 ## Preview
 
-![Preview](./preview.png){width="400px"}
+![Preview](./preview.png)
