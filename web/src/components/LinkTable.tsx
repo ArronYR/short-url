@@ -58,12 +58,12 @@ export default function LinkTable() {
 
     const columns: GridColDef<API.LinkRowProp>[] = [
         {
-            field: 'short_id',
+            field: 'shortId',
             headerName: '短链接',
             width: 180,
             sortable: false,
             renderCell: (props) => {
-                const url = `${baseUrl}/${props.row.short_id}`
+                const url = `${baseUrl}/${props.row.shortId}`
                 return (
                     <Typography
                         variant={'body2'}
@@ -78,7 +78,7 @@ export default function LinkTable() {
             }
         },
         {
-            field: 'original_url',
+            field: 'originalUrl',
             headerName: '原链接',
             minWidth: 360,
             cellClassName: 'cell-cls-name',
@@ -94,7 +94,7 @@ export default function LinkTable() {
                         justifyContent={"space-between"}
                         width={'100%'}
                     >
-                        <Tooltip title={props.row.original_url} arrow={true} placement={"top"}>
+                        <Tooltip title={props.row.originalUrl} arrow={true} placement={"top"}>
                             <Typography
                                 variant={'body2'}
                                 noWrap={true}
@@ -102,10 +102,10 @@ export default function LinkTable() {
                             >
                                 <Link
                                     color={"inherit"}
-                                    href={props.row.original_url}
+                                    href={props.row.originalUrl}
                                     target={"_blank"}
                                     underline={'none'}
-                                >{props.row.original_url}</Link>
+                                >{props.row.originalUrl}</Link>
                             </Typography>
                         </Tooltip>
                     </Typography>
@@ -129,7 +129,7 @@ export default function LinkTable() {
             }
         },
         {
-            field: 'expired_ts',
+            field: 'expiredTs',
             headerName: '有效期',
             minWidth: 160,
             cellClassName: 'cell-cls-name',
@@ -158,7 +158,7 @@ export default function LinkTable() {
                             onClick={() => {
                                 setStatusDialogVisible(true);
                                 setStatusType(props.row.status === LINK_STATUS.NORMAL ? LINK_STATUS.DISABLED : LINK_STATUS.NORMAL)
-                                setStatusTargets([props.row.short_id!]);
+                                setStatusTargets([props.row.shortId!]);
                             }}
                         >
                             {
@@ -173,8 +173,8 @@ export default function LinkTable() {
                             sx={{ml: 1}}
                             onClick={() => {
                                 setExpiredDialogVisible(true);
-                                setExpiredTargets([props.row.short_id!]);
-                                setExpiredValue(props.row.expired_ts);
+                                setExpiredTargets([props.row.shortId!]);
+                                setExpiredValue(props.row.expiredTs);
                             }}
                         >
                             设置有效期
@@ -233,7 +233,7 @@ export default function LinkTable() {
 
             <div style={{height: 600, width: "100%"}}>
                 <DataGrid
-                    getRowId={(row) => row.short_id!}
+                    getRowId={(row) => row.shortId!}
                     loading={loading}
                     rows={links}
                     columns={columns}

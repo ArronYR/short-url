@@ -6,10 +6,10 @@ declare namespace API {
     }
     export type LinkRowProp = {
         id?: number;
-        short_id?: string,
-        original_url?: string;
+        shortId?: string,
+        originalUrl?: string;
         status?: number;
-        expired_ts?: number;
+        expiredTs?: number;
         pv?: number;
     }
 }

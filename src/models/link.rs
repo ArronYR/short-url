@@ -26,6 +26,7 @@ impl ActiveModelBehavior for ActiveModel {}
 #[derive(Debug, Deserialize)]
 pub struct GenerateReq {
     pub urls: Vec<String>,
+    #[serde(rename = "expiredTs")]
     pub expired_ts: Option<i64>,
 }
 
@@ -58,10 +59,14 @@ pub enum LinkStatusEnum {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct SearchRecordItem {
     pub id: u64,
+    #[serde(rename = "shortId")]
     pub short_id: String,
+    #[serde(rename = "originalUrl")]
     pub original_url: String,
+    #[serde(rename = "expiredTs")]
     pub expired_ts: i64,
     pub status: i16,
+    #[serde(rename = "createTime")]
     pub create_time: NaiveDateTime,
     pub pv: i64,
 }

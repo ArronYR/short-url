@@ -14,7 +14,6 @@ COPY web/src ./src
 
 # 安装依赖
 RUN npm config set strict-ssl false
-RUN npm config set registry https://registry.npm.taobao.org
 RUN npm install
 
 # 构建应用
@@ -26,19 +25,19 @@ FROM rust:slim-buster as rs-builder
 # 创建一个新的空工作目录
 WORKDIR /usr/src/app
 
-# 复制 Cargo.toml 和 Cargo.lock 到工作目录
-COPY Cargo.toml Cargo.lock ./
-
 # 使用国内的源
 COPY config /.cargo/config
 
-# 构建依赖项，这样如果依赖没变，就可以利用 Docker 缓存
-RUN mkdir src/
-# 复制源代码到工作目录
-COPY src/ ./src/
-COPY static/ ./static/
-COPY templates/ ./templates/
+# 复制 Cargo.toml 和 Cargo.lock 到工作目录
+COPY Cargo.toml Cargo.lock ./
 
+# 复制源代码到工作目录
+COPY ./src ./src
+COPY ./static ./static
+COPY ./templates ./templates
+
+#RUN cargo vendor
+RUN cargo clean
 RUN cargo build --release
 
 # 使用基础镜像作为运行环境
