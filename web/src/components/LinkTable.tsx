@@ -137,8 +137,8 @@ export default function LinkTable() {
             valueGetter: ({value}) => value ? moment(value).format(DT_FORMAT.DATETIME) : '永久',
         },
         {
-            field: 'pv',
-            headerName: 'PV',
+            field: 'hits',
+            headerName: 'Hits',
             minWidth: 40,
             cellClassName: 'cell-cls-name',
             sortable: false,

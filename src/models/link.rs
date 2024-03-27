@@ -68,5 +68,5 @@ pub struct SearchRecordItem {
     pub status: i16,
     #[serde(rename = "createTime")]
     pub create_time: NaiveDateTime,
-    pub pv: i64,
+    pub hits: i64,
 }

@@ -20,16 +20,16 @@ impl AccessLogService {
         .await
     }
 
-    pub async fn batch_query_pv(db: &DbConn, short_ids: Vec<String>) -> HashMap<String, i64> {
+    pub async fn batch_query_hits(db: &DbConn, short_ids: Vec<String>) -> HashMap<String, i64> {
         #[derive(Debug, FromQueryResult)]
         struct GroupByResult {
             short_id: String,
             total: i64,
         }
 
-        let mut pv_map: HashMap<String, i64> = HashMap::new();
+        let mut hits_map: HashMap<String, i64> = HashMap::new();
         if short_ids.is_empty() {
-            return pv_map;
+            return hits_map;
         }
         let id_string = short_ids
             .iter()
@@ -46,13 +46,13 @@ impl AccessLogService {
         .await;
 
         if result.is_err() {
-            error!("batch_query_pv error: {:?}", result.err());
-            return pv_map;
+            error!("batch_query_hits error: {:?}", result.err());
+            return hits_map;
         }
 
         for row in result.unwrap() {
-            pv_map.insert(row.short_id, row.total);
+            hits_map.insert(row.short_id, row.total);
         }
-        pv_map
+        hits_map
     }
 }

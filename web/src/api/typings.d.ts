@@ -10,7 +10,7 @@ declare namespace API {
         originalUrl?: string;
         status?: number;
         expiredTs?: number;
-        pv?: number;
+        hits?: number;
     }
 }
 

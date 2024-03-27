@@ -216,11 +216,11 @@ async fn search(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResp
         .await
         .expect("Cannot find links in page");
 
-    // 查找PV数据（如果开启了ACCESS_LOG）
-    let mut pv_map: HashMap<String, i64> = HashMap::new();
+    // 查找Hits数据（如果开启了ACCESS_LOG）
+    let mut hits_map: HashMap<String, i64> = HashMap::new();
     if config.access_log {
         let ids: Vec<String> = links.iter().map(|r| r.short_id.clone()).collect();
-        pv_map = AccessLogService::batch_query_pv(&db_conn, ids).await;
+        hits_map = AccessLogService::batch_query_hits(&db_conn, ids).await;
     }
 
     let mut records: Vec<SearchRecordItem> = Vec::new();
@@ -232,7 +232,7 @@ async fn search(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResp
             expired_ts: link.expired_ts,
             status: link.status,
             create_time: link.create_time,
-            pv: *pv_map.get(link.short_id.as_str()).unwrap_or(&0i64),
+            hits: *hits_map.get(link.short_id.as_str()).unwrap_or(&0i64),
         })
     }
 
